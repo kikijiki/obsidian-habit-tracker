@@ -25,6 +25,11 @@ jobs:
         run: npm run build
 
       - name: Upload Release Assets
-        run: gh release upload ${{github.event.release.tag_name}} main.js manifest.json styles.css || true
+        run: |
+          if [ -f styles.css ]; then
+            gh release upload ${{github.event.release.tag_name}} main.js manifest.json styles.css
+          else
+            gh release upload ${{github.event.release.tag_name}} main.js manifest.json
+          fi
         env:
           GITHUB_TOKEN: ${{ github.token }}
