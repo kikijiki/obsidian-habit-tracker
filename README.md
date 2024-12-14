@@ -11,13 +11,6 @@ A simple habit tracker plugin for Obsidian.
 
 ## Screenshots
 
-<div style="display: flex; gap: 10px;">
-    <div>
-        <p>Desktop</p>
-        <img src="screenshot-desktop.png" alt="Screenshot Desktop" style="height: 400px; width: auto;"/>
-    </div>
-    <div>
-        <p>Mobile</p>
-        <img src="screenshot-mobile.png" alt="Screenshot Mobile" style="height: 400px; width: auto;"/>
-    </div>
-</div>
+| Desktop | Mobile |
+|---------|---------|
+| <img src="screenshot-desktop.png" alt="Screenshot Desktop" height="400"/> | <img src="screenshot-mobile.png" alt="Screenshot Mobile" height="400"/> |
