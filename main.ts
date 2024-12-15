@@ -27,8 +27,8 @@ export default class KikijikiHabitTracker extends Plugin {
 		);
 
 		this.addCommand({
-			id: 'kikijiki-habit-tracker-open',
-			name: 'Open Kikijiki Habit Tracker',
+			id: 'kikijikihabittracker-open',
+			name: 'Open Panel',
 			callback: () => {
 				this.activateView();
 			}
@@ -59,7 +59,6 @@ export default class KikijikiHabitTracker extends Plugin {
 	}
 
 	onunload() {
-		this.app.workspace.detachLeavesOfType(HABIT_TRACKER_VIEW_TYPE);
 	}
 
 	async loadSettings() {
