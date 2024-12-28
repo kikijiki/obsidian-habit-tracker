@@ -1,4 +1,4 @@
-import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, ItemView, ToggleComponent, TFile } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, ItemView, ToggleComponent, TFile, MetadataCache } from 'obsidian';
 import * as yaml from 'js-yaml';
 
 const HABIT_TRACKER_VIEW_TYPE = 'kikijiki-habit-tracker-view';
@@ -27,7 +27,7 @@ export default class KikijikiHabitTracker extends Plugin {
 		);
 
 		this.addCommand({
-			id: 'kikijikihabittracker-open',
+			id: 'open-panel',
 			name: 'Open Panel',
 			callback: () => {
 				this.activateView();
@@ -84,17 +84,17 @@ class KikijikiHabitTrackerSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-		.setName('Tag Prefix')
-		.setDesc('Prefix for tags, the final tag will be <prefix>/<habit>.')
-		.addText(text => text
-			.setPlaceholder('Enter tag prefix')
-			.setValue(this.plugin.settings.tagPrefix)
-			.onChange(async (value) => {
-				this.plugin.settings.tagPrefix = value;
-				await this.plugin.saveSettings();
-			}));
+			.setName('Tag Prefix')
+			.setDesc('Prefix for tags, the final tag will be <prefix>/<habit>.')
+			.addText(text => text
+				.setPlaceholder('Enter tag prefix')
+				.setValue(this.plugin.settings.tagPrefix)
+				.onChange(async (value) => {
+					this.plugin.settings.tagPrefix = value;
+					await this.plugin.saveSettings();
+				}));
 
-			new Setting(containerEl)
+		new Setting(containerEl)
 			.setName('Habits')
 			.setDesc('List of habits that will appear in the panel.');
 
@@ -118,13 +118,13 @@ class KikijikiHabitTrackerSettingTab extends PluginSettingTab {
 		});
 
 		new Setting(containerEl)
-		.addButton(button => {
-			button.setButtonText('Add Habit');
-			button.onClick(() => {
-				this.plugin.settings.habits.push('');
-				this.display();
+			.addButton(button => {
+				button.setButtonText('Add Habit');
+				button.onClick(() => {
+					this.plugin.settings.habits.push('');
+					this.display();
+				});
 			});
-		});
 	}
 }
 
@@ -180,9 +180,9 @@ class HabitTrackerView extends ItemView {
 			return;
 		}
 
-		const fileContent = await this.app.vault.read(activeFile);
-		const yamlHeader = this.extractYamlHeader(fileContent);
-		const existingTags = yamlHeader.tags || [];
+		const cache = this.app.metadataCache.getFileCache(activeFile);
+		const frontmatter = cache?.frontmatter || {};
+		const existingTags = frontmatter.tags || [];
 
 		this.plugin.settings.habits.forEach(habit => {
 			const tag = `${this.plugin.settings.tagPrefix}/${habit}`;
@@ -199,41 +199,15 @@ class HabitTrackerView extends ItemView {
 
 	private createToggleHandler(file: TFile, tag: string) {
 		return async (value: boolean) => {
-			const content = await this.app.vault.read(file);
-			const yamlHeader = this.extractYamlHeader(content);
-			const currentTags = yamlHeader.tags || [];
-
-			const updatedTags = value
-				? [...new Set([...currentTags, tag])]
-				: currentTags.filter((t: string) => t !== tag);
-
-			const newYamlHeader = { ...yamlHeader, tags: updatedTags };
-			const newContent = this.updateYamlHeader(content, newYamlHeader);
-			await this.app.vault.modify(file, newContent);
+			await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+				var tags = frontmatter.tags || [];
+				if (value && !tags.includes(tag)) {
+					tags.push(tag);
+				} else if (!value && tags.includes(tag)) {
+					tags = tags.filter((t: string) => t !== tag);
+				}
+				frontmatter.tags = tags;
+			});
 		};
-	}
-
-	extractYamlHeader(content: string): any {
-		const yamlMatch = content.match(/^---\n([\s\S]*?)\n---/);
-		if (yamlMatch) {
-			return yaml.load(yamlMatch[1]);
-		}
-		return {};
-	}
-
-	updateYamlHeader(content: string, yamlHeader: any): string {
-		let yamlContent: string;
-		try {
-			yamlContent = yaml.dump(yamlHeader);
-		} catch (error) {
-			console.error('Failed to dump YAML content:', error);
-			return content; // Return original content if dumping fails
-		}
-
-		if (content.startsWith('---\n')) {
-			return content.replace(/^---\n([\s\S]*?)\n---/, `---\n${yamlContent}\n---`);
-		} else {
-			return `---\n${yamlContent}\n---\n${content}`;
-		}
 	}
 }
