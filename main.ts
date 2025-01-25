@@ -28,7 +28,7 @@ export default class KikijikiHabitTracker extends Plugin {
 
 		this.addCommand({
 			id: 'open-panel',
-			name: 'Open Panel',
+			name: 'Open panel',
 			callback: () => {
 				this.activateView();
 			}
@@ -84,7 +84,7 @@ class KikijikiHabitTrackerSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName('Tag Prefix')
+			.setName('Tag prefix')
 			.setDesc('Prefix for tags, the final tag will be <prefix>/<habit>.')
 			.addText(text => text
 				.setPlaceholder('Enter tag prefix')
@@ -119,7 +119,7 @@ class KikijikiHabitTrackerSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.addButton(button => {
-				button.setButtonText('Add Habit');
+				button.setButtonText('Add habit');
 				button.onClick(() => {
 					this.plugin.settings.habits.push('');
 					this.display();
@@ -143,7 +143,7 @@ class HabitTrackerView extends ItemView {
 	}
 
 	getDisplayText() {
-		return 'Habit Tracker';
+		return 'Habit tracker';
 	}
 
 	getIcon() {
