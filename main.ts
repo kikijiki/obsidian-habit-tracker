@@ -200,7 +200,7 @@ class HabitTrackerView extends ItemView {
 	private createToggleHandler(file: TFile, tag: string) {
 		return async (value: boolean) => {
 			await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-				var tags = frontmatter.tags || [];
+				let tags = frontmatter.tags || [];
 				if (value && !tags.includes(tag)) {
 					tags.push(tag);
 				} else if (!value && tags.includes(tag)) {
