@@ -1,5 +1,4 @@
-import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, ItemView, ToggleComponent, TFile, MetadataCache } from 'obsidian';
-import * as yaml from 'js-yaml';
+import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, ItemView, TFile } from 'obsidian';
 
 const HABIT_TRACKER_VIEW_TYPE = 'kikijiki-habit-tracker-view';
 
@@ -99,31 +98,71 @@ class KikijikiHabitTrackerSettingTab extends PluginSettingTab {
 			.setDesc('List of habits that will appear in the panel.');
 
 		this.plugin.settings.habits.forEach((habit, index) => {
-			new Setting(containerEl)
-				.setName(`Habit ${index + 1}`)
+			const setting = new Setting(containerEl)
+				.setName(`#${index + 1}`)
 				.addText(text => text
 					.setValue(habit)
+					.setPlaceholder('Enter habit name')
 					.onChange(async (value) => {
-						this.plugin.settings.habits[index] = value;
+						this.plugin.settings.habits[index] = value.trim();
 						await this.plugin.saveSettings();
-					}))
-				.addButton(button => {
-					button.setButtonText('Remove');
-					button.onClick(async () => {
+					}));
+
+			setting.addButton(button => {
+				button
+					.setIcon('arrow-up')
+					.setTooltip('Move up')
+					.setDisabled(index === 0)
+					.onClick(async () => {
+						if (index > 0) {
+							const temp = this.plugin.settings.habits[index];
+							this.plugin.settings.habits[index] = this.plugin.settings.habits[index - 1];
+							this.plugin.settings.habits[index - 1] = temp;
+							await this.plugin.saveSettings();
+							this.display();
+						}
+					});
+			});
+
+			setting.addButton(button => {
+				button
+					.setIcon('arrow-down')
+					.setTooltip('Move down')
+					.setDisabled(index === this.plugin.settings.habits.length - 1)
+					.onClick(async () => {
+						if (index < this.plugin.settings.habits.length - 1) {
+							const temp = this.plugin.settings.habits[index];
+							this.plugin.settings.habits[index] = this.plugin.settings.habits[index + 1];
+							this.plugin.settings.habits[index + 1] = temp;
+							await this.plugin.saveSettings();
+							this.display();
+						}
+					});
+			});
+
+			setting.addButton(button => {
+				button
+					.setIcon('trash')
+					.setTooltip('Remove')
+					.onClick(async () => {
 						this.plugin.settings.habits.splice(index, 1);
 						await this.plugin.saveSettings();
 						this.display();
 					});
-				});
+			});
 		});
 
 		new Setting(containerEl)
+			.setName('Add new habit')
 			.addButton(button => {
-				button.setButtonText('Add habit');
-				button.onClick(() => {
-					this.plugin.settings.habits.push('');
-					this.display();
-				});
+				button
+					.setIcon('plus')
+					.setTooltip('Add habit')
+					.onClick(async () => {
+						this.plugin.settings.habits.push('');
+						await this.plugin.saveSettings();
+						this.display();
+					});
 			});
 	}
 }
@@ -185,6 +224,10 @@ class HabitTrackerView extends ItemView {
 		const existingTags = frontmatter.tags || [];
 
 		this.plugin.settings.habits.forEach(habit => {
+			if (!habit || habit.trim() === '') {
+				return;
+			}
+
 			const tag = `${this.plugin.settings.tagPrefix}/${habit}`;
 			const setting = new Setting(contentEl)
 				.setName(habit)
