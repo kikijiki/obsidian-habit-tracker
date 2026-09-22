@@ -1,21 +1,22 @@
 name: Release
 
 on:
-  release:
-    types: [published]
-  workflow_dispatch:
-
-permissions:
-  contents: write
+  push:
+    tags:
+      - "*"
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24"
           cache: "npm"
 
       - name: Install dependencies
@@ -24,12 +25,23 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Upload Release Assets
+      - name: Generate artifact attestation
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            main.js
+            manifest.json
+            styles.css
+
+      - name: Create release
         run: |
-          if [ -f styles.css ]; then
-            gh release upload ${{github.event.release.tag_name}} main.js manifest.json styles.css
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" --clobber main.js manifest.json styles.css
           else
-            gh release upload ${{github.event.release.tag_name}} main.js manifest.json
+            gh release create "${GITHUB_REF_NAME}" \
+              --title "${GITHUB_REF_NAME}" \
+              --generate-notes \
+              main.js manifest.json styles.css
           fi
         env:
           GITHUB_TOKEN: ${{ github.token }}

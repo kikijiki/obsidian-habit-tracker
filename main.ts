@@ -1,15 +1,17 @@
-import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, ItemView, TFile } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, ItemView, TFile, setIcon } from 'obsidian';
 
 const HABIT_TRACKER_VIEW_TYPE = 'kikijiki-habit-tracker-view';
 
 interface KikijikiHabitTrackerSettings {
 	tagPrefix: string;
 	habits: string[];
+	multiColumnLayout: boolean;
 }
 
 const DEFAULT_SETTINGS: KikijikiHabitTrackerSettings = {
 	tagPrefix: 'habit',
-	habits: []
+	habits: [],
+	multiColumnLayout: false,
 }
 
 export default class KikijikiHabitTracker extends Plugin {
@@ -29,7 +31,7 @@ export default class KikijikiHabitTracker extends Plugin {
 			id: 'open-panel',
 			name: 'Open panel',
 			callback: () => {
-				this.activateView();
+				void this.activateView();
 			}
 		});
 
@@ -49,11 +51,11 @@ export default class KikijikiHabitTracker extends Plugin {
 			rightLeaf = this.app.workspace.getRightLeaf(true);
 		}
 		if (rightLeaf) {
-			rightLeaf.setViewState({
+			await rightLeaf.setViewState({
 				type: HABIT_TRACKER_VIEW_TYPE,
 				active: true,
 			});
-			this.app.workspace.revealLeaf(rightLeaf);
+			await this.app.workspace.revealLeaf(rightLeaf);
 		}
 	}
 
@@ -66,6 +68,12 @@ export default class KikijikiHabitTracker extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+	}
+
+	refreshViews(): void {
+		this.app.workspace
+			.getLeavesOfType(HABIT_TRACKER_VIEW_TYPE)
+			.forEach(leaf => (leaf.view as HabitTrackerView).refresh());
 	}
 }
 
@@ -91,69 +99,24 @@ class KikijikiHabitTrackerSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.tagPrefix = value;
 					await this.plugin.saveSettings();
+					this.plugin.refreshViews();
 				}));
 
 		new Setting(containerEl)
-			.setName('Habits')
-			.setDesc('List of habits that will appear in the panel.');
-
-		this.plugin.settings.habits.forEach((habit, index) => {
-			const setting = new Setting(containerEl)
-				.setName(`#${index + 1}`)
-				.addText(text => text
-					.setValue(habit)
-					.setPlaceholder('Enter habit name')
-					.onChange(async (value) => {
-						this.plugin.settings.habits[index] = value.trim();
-						await this.plugin.saveSettings();
-					}));
-
-			setting.addButton(button => {
-				button
-					.setIcon('arrow-up')
-					.setTooltip('Move up')
-					.setDisabled(index === 0)
-					.onClick(async () => {
-						if (index > 0) {
-							const temp = this.plugin.settings.habits[index];
-							this.plugin.settings.habits[index] = this.plugin.settings.habits[index - 1];
-							this.plugin.settings.habits[index - 1] = temp;
-							await this.plugin.saveSettings();
-							this.display();
-						}
-					});
-			});
-
-			setting.addButton(button => {
-				button
-					.setIcon('arrow-down')
-					.setTooltip('Move down')
-					.setDisabled(index === this.plugin.settings.habits.length - 1)
-					.onClick(async () => {
-						if (index < this.plugin.settings.habits.length - 1) {
-							const temp = this.plugin.settings.habits[index];
-							this.plugin.settings.habits[index] = this.plugin.settings.habits[index + 1];
-							this.plugin.settings.habits[index + 1] = temp;
-							await this.plugin.saveSettings();
-							this.display();
-						}
-					});
-			});
-
-			setting.addButton(button => {
-				button
-					.setIcon('trash')
-					.setTooltip('Remove')
-					.onClick(async () => {
-						this.plugin.settings.habits.splice(index, 1);
-						await this.plugin.saveSettings();
-						this.display();
-					});
-			});
-		});
+			.setName('Multi-column panel')
+			.setDesc('Show habits in equal-width columns when the panel has enough space.')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.multiColumnLayout)
+				.onChange(async (value) => {
+					this.plugin.settings.multiColumnLayout = value;
+					await this.plugin.saveSettings();
+					this.plugin.refreshViews();
+				}));
 
 		new Setting(containerEl)
-			.setName('Add new habit')
+			.setName('List of all habits')
+			.setHeading()
+			.setClass('kikijiki-habit-list-heading')
 			.addButton(button => {
 				button
 					.setIcon('plus')
@@ -161,9 +124,167 @@ class KikijikiHabitTrackerSettingTab extends PluginSettingTab {
 					.onClick(async () => {
 						this.plugin.settings.habits.push('');
 						await this.plugin.saveSettings();
+						this.plugin.refreshViews();
 						this.display();
 					});
 			});
+
+		const habitList = containerEl.createDiv({ cls: 'kikijiki-habit-list' });
+		this.plugin.settings.habits.forEach((habit, index) => {
+			this.renderHabitRow(habitList, habit, index);
+		});
+
+	}
+
+	private renderHabitRow(container: HTMLElement, habit: string, index: number): void {
+		const row = container.createDiv({ cls: 'kikijiki-habit-row' });
+		row.dataset.index = index.toString();
+
+		const dragHandle = row.createEl('button', {
+			cls: 'clickable-icon kikijiki-habit-row__icon kikijiki-habit-row__handle',
+			attr: {
+				type: 'button',
+				'aria-label': `Reorder habit ${(index + 1).toString()}`,
+				'aria-grabbed': 'false',
+			},
+		});
+		setIcon(dragHandle, 'grip-vertical');
+		dragHandle.setAttribute('title', 'Drag to reorder');
+
+		const input = row.createEl('input', {
+			cls: 'kikijiki-habit-row__input',
+			attr: {
+				type: 'text',
+				placeholder: 'Enter habit name',
+				value: habit,
+				'aria-label': `Habit ${(index + 1).toString()}`,
+			},
+		});
+		input.addEventListener('input', () => {
+			void this.updateHabitName(index, input.value);
+		});
+
+		const removeButton = row.createEl('button', {
+			cls: 'clickable-icon kikijiki-habit-row__icon kikijiki-habit-row__remove',
+			attr: {
+				type: 'button',
+				'aria-label': `Remove habit ${(index + 1).toString()}`,
+				title: 'Remove habit',
+			},
+		});
+		setIcon(removeButton, 'trash');
+		removeButton.addEventListener('click', () => {
+			void this.removeHabit(index);
+		});
+
+		this.registerDragHandle(dragHandle, row, container, index);
+	}
+
+	private registerDragHandle(
+		handle: HTMLButtonElement,
+		row: HTMLElement,
+		container: HTMLElement,
+		fromIndex: number,
+	): void {
+		let activePointer: number | null = null;
+		let targetIndex = fromIndex;
+
+		const clearTarget = (): void => {
+			container
+				.querySelectorAll('.kikijiki-habit-row.is-drop-target')
+				.forEach(candidate => candidate.removeClass('is-drop-target'));
+		};
+
+		const finish = (move: boolean): void => {
+			if (activePointer === null) {
+				return;
+			}
+			if (handle.hasPointerCapture(activePointer)) {
+				handle.releasePointerCapture(activePointer);
+			}
+			activePointer = null;
+			handle.setAttribute('aria-grabbed', 'false');
+			row.removeClass('is-dragging');
+			clearTarget();
+			if (move && targetIndex !== fromIndex) {
+				void this.moveHabit(fromIndex, targetIndex);
+			}
+		};
+
+		handle.addEventListener('pointerdown', event => {
+			if (event.button !== 0 || activePointer !== null) {
+				return;
+			}
+			activePointer = event.pointerId;
+			targetIndex = fromIndex;
+			handle.setPointerCapture(event.pointerId);
+			handle.setAttribute('aria-grabbed', 'true');
+			row.addClass('is-dragging');
+		});
+
+		handle.addEventListener('pointermove', event => {
+			if (event.pointerId !== activePointer) {
+				return;
+			}
+			const rows = Array.from(
+				container.querySelectorAll<HTMLElement>('.kikijiki-habit-row'),
+			);
+			const nearest = rows.reduce<{ row: HTMLElement; distance: number } | null>(
+				(closest, candidate) => {
+					const bounds = candidate.getBoundingClientRect();
+					const distance = Math.abs(event.clientY - (bounds.top + bounds.height / 2));
+					return closest === null || distance < closest.distance
+						? { row: candidate, distance }
+						: closest;
+				},
+				null,
+			);
+			const nextIndex = Number.parseInt(nearest?.row.dataset.index ?? '', 10);
+			if (!Number.isInteger(nextIndex)) {
+				return;
+			}
+			targetIndex = nextIndex;
+			clearTarget();
+			if (targetIndex !== fromIndex) {
+				nearest?.row.addClass('is-drop-target');
+			}
+		});
+
+		handle.addEventListener('pointerup', event => {
+			if (event.pointerId === activePointer) {
+				finish(true);
+			}
+		});
+		handle.addEventListener('pointercancel', () => finish(false));
+	}
+
+	private async moveHabit(fromIndex: number, toIndex: number): Promise<void> {
+		const habits = this.plugin.settings.habits;
+		const destination = Math.max(0, Math.min(toIndex, habits.length - 1));
+		if (fromIndex === destination) {
+			return;
+		}
+		const [habit] = habits.splice(fromIndex, 1);
+		if (habit === undefined) {
+			return;
+		}
+		habits.splice(destination, 0, habit);
+		await this.plugin.saveSettings();
+		this.plugin.refreshViews();
+		this.display();
+	}
+
+	private async updateHabitName(index: number, value: string): Promise<void> {
+		this.plugin.settings.habits[index] = value.trim();
+		await this.plugin.saveSettings();
+		this.plugin.refreshViews();
+	}
+
+	private async removeHabit(index: number): Promise<void> {
+		this.plugin.settings.habits.splice(index, 1);
+		await this.plugin.saveSettings();
+		this.plugin.refreshViews();
+		this.display();
 	}
 }
 
@@ -202,7 +323,12 @@ class HabitTrackerView extends ItemView {
 		this.settings = [];
 	}
 
-	async render() {
+	refresh(): void {
+		this.currentFile = null;
+		this.render();
+	}
+
+	render() {
 		const { contentEl } = this;
 		const activeFile = this.app.workspace.getActiveFile();
 
@@ -222,6 +348,10 @@ class HabitTrackerView extends ItemView {
 		const cache = this.app.metadataCache.getFileCache(activeFile);
 		const frontmatter = cache?.frontmatter || {};
 		const existingTags = frontmatter.tags || [];
+		const habitGrid = contentEl.createDiv({ cls: 'kikijiki-habit-panel-grid' });
+		if (this.plugin.settings.multiColumnLayout) {
+			habitGrid.addClass('is-multi-column');
+		}
 
 		this.plugin.settings.habits.forEach(habit => {
 			if (!habit || habit.trim() === '') {
@@ -229,7 +359,8 @@ class HabitTrackerView extends ItemView {
 			}
 
 			const tag = `${this.plugin.settings.tagPrefix}/${habit}`;
-			const setting = new Setting(contentEl)
+			const setting = new Setting(habitGrid)
+				.setClass('kikijiki-habit-panel-item')
 				.setName(habit)
 				.addToggle(toggle => {
 					toggle.setValue(existingTags.includes(tag));
@@ -237,6 +368,35 @@ class HabitTrackerView extends ItemView {
 				});
 
 			this.settings.push(setting);
+		});
+
+		if (!this.plugin.settings.multiColumnLayout) {
+			return;
+		}
+
+		window.requestAnimationFrame(() => {
+			if (!habitGrid.isConnected) {
+				return;
+			}
+			const widths = this.settings.map(setting => {
+				const el = setting.settingEl;
+				const prevWidth = el.style.width;
+				const prevMinWidth = el.style.minWidth;
+				el.style.width = 'max-content';
+				el.style.minWidth = '0';
+				const width = el.getBoundingClientRect().width;
+				el.style.width = prevWidth;
+				el.style.minWidth = prevMinWidth;
+				return width;
+			});
+			const widestItem = widths.length > 0 ? Math.max(...widths) : 0;
+			if (widestItem <= 0) {
+				return;
+			}
+			habitGrid.style.setProperty(
+				'--kikijiki-habit-panel-column-min',
+				`${Math.ceil(widestItem).toString()}px`,
+			);
 		});
 	}
 
